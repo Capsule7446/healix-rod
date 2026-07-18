@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Healix Fixture: Login</title></head>
+<body>
+<form id="loginForm">
+  <input id="username" type="text" name="username">
+  <div id="button-container"></div>
+</form>
+<div id="result"></div>
+<script>
+  // ?scenario= drives which DOM shape renders, so the same workflow config
+  // can exercise every heal confidence band against one fixture file:
+  //   normal    - baseline selectors resolve directly, no healing.
+  //   heal-high - id/testid gone but everything else (class/aria/text/
+  //               position/neighbors) is untouched -> Healer should score
+  //               a near-exact-clone candidate >= applied_cap (0.85).
+  //   heal-mid  - class/testid changed AND an extra sibling shifts
+  //               sibling_index -> partial match, expected in the
+  //               review_cap..applied_cap band (0.60-0.85).
+  //   heal-fail - nothing resembling the original button exists.
+  const params = new URLSearchParams(location.search);
+  const scenario = params.get('scenario') || 'normal';
+  const container = document.getElementById('button-container');
+
+  function makeButton(attrs, text) {
+    const btn = document.createElement('button');
+    btn.type = 'submit';
+    for (const [k, v] of Object.entries(attrs)) btn.setAttribute(k, v);
+    btn.textContent = text;
+    return btn;
+  }
+
+  switch (scenario) {
+    case 'normal':
+      container.appendChild(makeButton({ id: 'submit', class: 'primary', 'data-testid': 'login-submit' }, '登录'));
+      break;
+    case 'heal-high': {
+      const btn = makeButton({ id: 'submit-x9f2', class: 'primary' }, '登录');
+      btn.setAttribute('role', 'button');
+      btn.setAttribute('aria-label', '登录');
+      container.appendChild(btn);
+      break;
+    }
+    case 'heal-mid': {
+      // Same role/aria-label as heal-high (keeps the RoleName dimension
+      // matching) but id/class changed AND an extra sibling shifts
+      // sibling_index -> score should land in the review band, not as
+      // high as heal-high's near-exact clone.
+      const spacer = document.createElement('span');
+      spacer.textContent = ' ';
+      container.appendChild(spacer);
+      const btn = makeButton({ id: 'go-x9f2', class: 'secondary' }, '登录');
+      btn.setAttribute('role', 'button');
+      btn.setAttribute('aria-label', '登录');
+      container.appendChild(btn);
+      break;
+    }
+    case 'heal-fail': {
+      const link = document.createElement('a');
+      link.href = '#';
+      link.textContent = '帮助中心';
+      container.appendChild(link);
+      break;
+    }
+  }
+
+  const btn = container.querySelector('button');
+  if (btn) {
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      document.getElementById('result').textContent = '欢迎, ' + document.getElementById('username').value;
+    });
+  }
+</script>
+</body>
+</html>
