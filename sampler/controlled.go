@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/ysmood/gson"
 
@@ -16,12 +17,17 @@ import (
 type ControlledBrowser struct {
 	driver *rodadapter.Driver
 
-	mu           sync.Mutex
-	handler      sampling.CaptureHandler
-	opened       bool
-	closed       bool
-	stopExpose   func() error
-	removeScript func() error
+	mu             sync.Mutex
+	handler        sampling.CaptureHandler
+	opened         bool
+	opening        bool
+	closed         bool
+	activeCaptures int
+	cleanupStarted bool
+	captureDone    chan struct{}
+	closeErr       error
+	stopExpose     func() error
+	removeScript   func() error
 }
 
 // NewControlled 创建受控浏览器。
@@ -42,21 +48,31 @@ func (b *ControlledBrowser) Open(ctx context.Context, startURL string) error {
 		b.mu.Unlock()
 		return errors.New("sampler: browser is closed")
 	}
-	if b.opened {
+	if b.opened || b.opening {
 		b.mu.Unlock()
 		return errors.New("sampler: browser is already open")
 	}
-	b.opened = true
+	b.opening = true
 	b.mu.Unlock()
 
 	stopExpose, err := b.driver.Expose("__healixCaptureNode", func(payload gson.JSON) (interface{}, error) {
 		b.mu.Lock()
-		handler := b.handler
-		closed := b.closed
-		b.mu.Unlock()
-		if closed || handler == nil {
+		if b.closed || b.handler == nil || !b.opened {
+			b.mu.Unlock()
 			return nil, errors.New("sampler: capture is paused")
 		}
+		handler := b.handler
+		b.activeCaptures++
+		b.mu.Unlock()
+		defer func() {
+			b.mu.Lock()
+			b.activeCaptures--
+			if b.activeCaptures == 0 && b.captureDone != nil {
+				close(b.captureDone)
+				b.captureDone = nil
+			}
+			b.mu.Unlock()
+		}()
 		capture, err := decodeCapture(payload)
 		if err != nil {
 			return nil, err
@@ -72,24 +88,46 @@ func (b *ControlledBrowser) Open(ctx context.Context, startURL string) error {
 		}, nil
 	})
 	if err != nil {
+		b.mu.Lock()
+		b.opening = false
+		b.mu.Unlock()
 		_ = b.driver.Close()
 		return fmt.Errorf("sampler: expose capture binding: %w", err)
 	}
 	combinedScript := "window.__healixSamplerInitialCaptureEnabled = false;\n" + samplerJS
 	removeScript, err := b.driver.EvalOnNewDocument(combinedScript)
 	if err != nil {
+		b.mu.Lock()
+		b.opening = false
+		b.mu.Unlock()
 		return errors.Join(fmt.Errorf("sampler: register controlled capture script: %w", err), stopExpose(), b.driver.Close())
 	}
 	b.mu.Lock()
+	closed := b.closed
 	b.stopExpose = stopExpose
 	b.removeScript = removeScript
 	b.mu.Unlock()
+	if closed {
+		result := errors.Join(removeScript(), stopExpose(), b.driver.Close())
+		b.mu.Lock()
+		b.opening = false
+		b.closeErr = result
+		b.mu.Unlock()
+		return result
+	}
 	if err := b.driver.EvalScript(ctx, combinedScript); err != nil {
 		return errors.Join(fmt.Errorf("sampler: inject controlled capture script: %w", err), b.Close())
 	}
 	if err := b.driver.Open(ctx, startURL); err != nil {
 		return errors.Join(err, b.Close())
 	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.opening = false
+	if b.closed {
+		return errors.New("sampler: browser closed during open")
+	}
+	b.opened = true
 	return nil
 }
 
@@ -188,16 +226,44 @@ func (b *ControlledBrowser) Done() <-chan struct{} { return b.driver.Done() }
 func (b *ControlledBrowser) Close() error {
 	b.mu.Lock()
 	if b.closed {
+		err := b.closeErr
 		b.mu.Unlock()
-		return nil
+		return err
 	}
 	b.closed = true
 	b.handler = nil
 	opened := b.opened
 	stopExpose := b.stopExpose
 	removeScript := b.removeScript
+	if b.activeCaptures > 0 {
+		if b.cleanupStarted {
+			b.mu.Unlock()
+			return nil
+		}
+		b.cleanupStarted = true
+		done := make(chan struct{})
+		b.captureDone = done
+		b.mu.Unlock()
+		select {
+		case <-done:
+			return b.cleanup(opened, stopExpose, removeScript)
+		case <-time.After(samplingCloseTimeout):
+			go func() {
+				<-done
+				err := b.cleanup(opened, stopExpose, removeScript)
+				b.mu.Lock()
+				b.closeErr = err
+				b.mu.Unlock()
+			}()
+			return fmt.Errorf("sampler: close timed out waiting for active captures")
+		}
+	}
+	b.cleanupStarted = true
 	b.mu.Unlock()
+	return b.cleanup(opened, stopExpose, removeScript)
+}
 
+func (b *ControlledBrowser) cleanup(opened bool, stopExpose, removeScript func() error) error {
 	var result error
 	if opened && !b.driver.Closed() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), samplingCloseTimeout)
