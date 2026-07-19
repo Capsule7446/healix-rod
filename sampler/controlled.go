@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/ysmood/gson"
 
@@ -243,14 +244,19 @@ func (b *ControlledBrowser) Close() error {
 		done := make(chan struct{})
 		b.captureDone = done
 		b.mu.Unlock()
-		go func() {
-			<-done
-			err := b.cleanup(opened, stopExpose, removeScript)
-			b.mu.Lock()
-			b.closeErr = err
-			b.mu.Unlock()
-		}()
-		return nil
+		select {
+		case <-done:
+			return b.cleanup(opened, stopExpose, removeScript)
+		case <-time.After(samplingCloseTimeout):
+			go func() {
+				<-done
+				err := b.cleanup(opened, stopExpose, removeScript)
+				b.mu.Lock()
+				b.closeErr = err
+				b.mu.Unlock()
+			}()
+			return fmt.Errorf("sampler: close timed out waiting for active captures")
+		}
 	}
 	b.cleanupStarted = true
 	b.mu.Unlock()
