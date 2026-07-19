@@ -53,6 +53,7 @@ jobs:
       - name: Run browser tests
         env:
           CGO_ENABLED: "1"
+          HEALIX_ROD_NO_SANDBOX: "1"
         run: go test ./... -count=1 -timeout 20m
 
       - name: Upload test logs

@@ -136,7 +136,7 @@ make gosec
 make check
 ```
 
-`make race` 需要 `CGO_ENABLED=1` 和可用的 C 编译器。完整浏览器测试可以通过 `BrowserPath` 指向 `.devtools/chromium/Application/chrome.exe`；`.devtools/chromium/`、`.devtools/bin/`、覆盖率和安全报告均已加入 `.gitignore`。
+`make race` 需要 `CGO_ENABLED=1` 和可用的 C 编译器。Linux CI 使用 `HEALIX_ROD_NO_SANDBOX=1` 关闭 Chromium sandbox；仅应在受控 CI 或本地隔离开发环境中使用。完整浏览器测试可以通过 `BrowserPath` 指向 `.devtools/chromium/Application/chrome.exe`；`.devtools/chromium/`、`.devtools/bin/`、覆盖率和安全报告均已加入 `.gitignore`。
 
 ## 许可证
 

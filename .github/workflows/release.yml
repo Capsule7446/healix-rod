@@ -32,6 +32,7 @@ jobs:
       - name: Validate and build
         env:
           CGO_ENABLED: "1"
+          HEALIX_ROD_NO_SANDBOX: "1"
         run: |
           test -z "$(gofmt -l .)"
           go vet ./...

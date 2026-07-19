@@ -41,6 +41,7 @@ jobs:
       - name: Run race tests
         env:
           CGO_ENABLED: "1"
+          HEALIX_ROD_NO_SANDBOX: "1"
         run: go test -race ./...
 
       - name: Build packages

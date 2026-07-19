@@ -51,6 +51,9 @@ var _ node.Driver = (*Driver)(nil)
 // New 启动 Chromium 并打开一个页面。
 func New(opts Options) (*Driver, error) {
 	l := launcher.New().Headless(opts.Headless).Revision(launcher.RevisionDefault)
+	if os.Getenv("HEALIX_ROD_NO_SANDBOX") == "1" {
+		l.Set("no-sandbox")
+	}
 	if opts.BrowserPath != "" {
 		l.Bin(opts.BrowserPath)
 	}
