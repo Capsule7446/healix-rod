@@ -57,7 +57,7 @@ func TestControlledBrowserPausesWithoutClosingPage(t *testing.T) {
 		t.Fatal("Done closed while controlled browser was open")
 	default:
 	}
-	// Open deliberately returns after navigation instead of waiting for full DOM
+	// Open returns after navigation instead of waiting for full DOM
 	// stability. Synchronize this test with the element it immediately drives so
 	// a slow concurrent Chromium package cannot make querySelector return nil.
 	if _, err := browser.driver.RawPage().Context(ctx).Element("#submit"); err != nil {

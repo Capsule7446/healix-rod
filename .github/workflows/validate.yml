@@ -1,0 +1,72 @@
+name: Validate Go
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout adapter
+        uses: actions/checkout@v4
+
+      - name: Checkout Core dependency
+        uses: actions/checkout@v4
+        with:
+          repository: Capsule7446/healix-core
+          path: healix-core
+
+      - name: Use checked out Core dependency
+        run: go mod edit -replace=github.com/Capsule7446/healix-core=./healix-core
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)"
+
+      - name: Run vet
+        run: go vet ./...
+
+      - name: Run short tests
+        run: go test -short ./...
+
+      - name: Run race tests
+        env:
+          CGO_ENABLED: "1"
+          HEALIX_ROD_NO_SANDBOX: "1"
+        run: go test -race ./...
+
+      - name: Build packages
+        run: go build ./...
+
+      - name: Collect coverage
+        env:
+          HEALIX_ROD_NO_SANDBOX: "1"
+        run: go test -covermode=atomic -coverprofile=coverage.out ./...
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+
+      - name: Run vulnerability check
+        run: govulncheck ./...
+
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.10
+
+      - name: Run security check
+        run: gosec -exclude-dir=healix-core -fmt sarif -out gosec.sarif ./...
+
+      - name: Upload security report
+        if: ${{ always() && hashFiles('gosec.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: gosec.sarif

@@ -1,0 +1,68 @@
+name: Browser E2E
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout adapter
+        uses: actions/checkout@v4
+
+      - name: Checkout Core dependency
+        uses: actions/checkout@v4
+        with:
+          repository: Capsule7446/healix-core
+          path: healix-core
+
+      - name: Use checked out Core dependency
+        run: go mod edit -replace=github.com/Capsule7446/healix-core=./healix-core
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install Chromium runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2t64 \
+            libatk-bridge2.0-0 \
+            libatk1.0-0 \
+            libcups2 \
+            libdrm2 \
+            libgbm1 \
+            libgtk-3-0 \
+            libnss3 \
+            libxcomposite1 \
+            libxdamage1 \
+            libxfixes3 \
+            libxkbcommon0 \
+            libxrandr2
+
+      - name: Run browser tests
+        env:
+          CGO_ENABLED: "1"
+          HEALIX_ROD_NO_SANDBOX: "1"
+        run: go test ./... -count=1 -timeout 20m
+
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-logs
+          path: |
+            *.log
+            **/*.log
+            coverage.out
+          if-no-files-found: ignore
