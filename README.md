@@ -33,11 +33,7 @@
 go get github.com/Capsule7446/healix-rod
 ```
 
-项目依赖 `github.com/Capsule7446/healix-core`、`github.com/go-rod/rod` 和 `github.com/ysmood/gson`。本地开发 Core 时，可以在 `go.mod` 中使用：
-
-```go
-replace github.com/Capsule7446/healix-core => ../healix-core
-```
+项目依赖 `github.com/Capsule7446/healix-core v0.1.0`、`github.com/go-rod/rod` 和 `github.com/ysmood/gson`。
 
 ## 使用 Driver
 
