@@ -9,8 +9,7 @@ import (
 	"github.com/go-rod/rod/lib/proto"
 )
 
-// roleSelectorRe 解析方案 §5.1 中的 role selector 语法，例如
-// "button[name=登录]" 或裸写的 "button"。
+// roleSelectorRe parses role selectors such as "button[name=登录]" or "button".
 var roleSelectorRe = regexp.MustCompile(`^([a-zA-Z][\w-]*)(?:\[name=(.+)\])?$`)
 
 func parseRoleSelector(value string) (role, name string, err error) {

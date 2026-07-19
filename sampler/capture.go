@@ -1,4 +1,4 @@
-// Package sampler implements interactive sampling in a Rod-controlled browser.
+// Package sampler 提供受控浏览器中的交互采样能力。
 package sampler
 
 import (
@@ -16,11 +16,6 @@ import (
 
 //go:embed assets/sampler.js
 var samplerJS string
-
-type Options struct {
-	Headless    bool
-	BrowserPath string
-}
 
 const samplingCloseTimeout = 6 * time.Second
 
@@ -42,9 +37,7 @@ type actionDTO struct {
 	Validation validationDTO `json:"validation"`
 }
 
-// validationDTO intentionally mirrors only the generic semantic recommendation
-// produced in sampler.js.  Ant Design DOM details are consumed there and never
-// cross this infrastructure boundary.
+// validationDTO contains the semantic validation result emitted by the page sampler.
 type validationDTO struct {
 	Kind           string   `json:"kind"`
 	Expected       string   `json:"expected"`

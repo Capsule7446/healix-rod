@@ -161,7 +161,7 @@ type candidateJSON struct {
 	Selector     string            `json:"selector"`
 }
 
-// Snapshot 是 heal.DOMSnapshot 的 go-rod 实现。
+// Snapshot 实现 Core 的 DOM 快照接口。
 type Snapshot struct {
 	page *rod.Page
 }

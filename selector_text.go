@@ -7,10 +7,10 @@ import (
 	"github.com/go-rod/rod"
 )
 
-// locateByText 按正则匹配元素可见文本定位（方案 §10.2 的 text selector）。
+// locateByText finds an element whose visible text matches a regular expression.
 // go-rod 的 ElementR 在整份文档里按 DOM 序找第一个 innerText 匹配的元素，
 // 而祖先节点（html/body/…）的 innerText 是全部后代文本的聚合，天然包含
-// 任何后代命中的子串，会在真正的目标元素之前被返回，导致 text selector
+// Matching descendant text can otherwise be returned before the intended target element
 // 在非单元素页面上基本定位不到预期目标。这里改为收集全部命中元素，取
 // 匹配文本最短的一个：祖先的命中文本必然是后代命中文本的超集（更长），
 // 所以最短命中就是最贴近目标的具体元素。

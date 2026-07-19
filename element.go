@@ -20,6 +20,7 @@ type Element struct {
 
 const elementStableTimeout = 15 * time.Second
 
+// Exists 检查元素是否仍连接到当前文档。
 func (e *Element) Exists(ctx context.Context) (bool, error) {
 	// isConnected distinguishes a detached DOM node from transport, context and
 	// browser failures without translating arbitrary CDP errors into absence.
@@ -33,14 +34,17 @@ func (e *Element) Exists(ctx context.Context) (bool, error) {
 	return result.Value.Bool(), nil
 }
 
+// Visible 返回元素当前是否可见。
 func (e *Element) Visible(ctx context.Context) (bool, error) {
 	return e.el.Context(ctx).Visible()
 }
 
+// Text 返回元素的可见文本。
 func (e *Element) Text(ctx context.Context) (string, error) {
 	return e.el.Context(ctx).Text()
 }
 
+// Attribute 返回指定属性的值及其是否存在。
 func (e *Element) Attribute(ctx context.Context, name string) (string, bool, error) {
 	v, err := e.el.Context(ctx).Attribute(name)
 	if err != nil {
@@ -52,9 +56,8 @@ func (e *Element) Attribute(ctx context.Context, name string) (string, bool, err
 	return *v, true, nil
 }
 
-// ValidationState is the Rod implementation of node.ValidationStateReader.
-// It reads live DOM properties first and standard ARIA attributes second, so
-// native controls and supported framework controls share one semantic result.
+// ValidationState 读取元素的值、启用状态、选择状态和校验语义。
+// 它优先读取 DOM 属性，再读取标准 ARIA 属性，以统一原生控件和兼容控件的结果。
 func (e *Element) ValidationState(ctx context.Context) (node.ValidationState, error) {
 	result, err := e.el.Context(ctx).Eval(`() => {
 		const bool = (value) => value === true || String(value || '').toLowerCase() === 'true';
@@ -101,6 +104,7 @@ func (e *Element) ValidationState(ctx context.Context) (node.ValidationState, er
 		Selected: raw.Selected, Pressed: raw.Pressed, SelectedTexts: raw.SelectedTexts, SelectedValues: raw.SelectedValues}, nil
 }
 
+// Click 点击元素；必要时回退到可接收指针事件的祖先元素。
 func (e *Element) Click(ctx context.Context) error {
 	err := e.el.Context(ctx).Click(proto.InputMouseButtonLeft, 1)
 	if err == nil || !strings.Contains(err.Error(), "pointer-events is none") {
@@ -131,6 +135,7 @@ func (e *Element) clickPointerEnabledAncestor(ctx context.Context) error {
 	return nil
 }
 
+// Input 用 text 替换元素当前的文本输入内容。
 func (e *Element) Input(ctx context.Context, text string) error {
 	el := e.el.Context(ctx)
 	if err := el.SelectAllText(); err != nil {
@@ -139,19 +144,18 @@ func (e *Element) Input(ctx context.Context, text string) error {
 	return el.Input(text)
 }
 
-// Select 按可见文本选中原生 <select> 或受支持的自定义下拉控件。
+// Select 按可见文本选择原生 <select> 或受支持的自定义下拉控件。
 func (e *Element) Select(ctx context.Context, option string, more ...string) error {
 	options := append([]string{option}, more...)
 	return selectVisibleText(ctx, e.el, options)
 }
 
-// Hover 把鼠标移到元素上，触发 mouseover/mouseenter。
+// Hover 将鼠标移动到元素上并触发相应的悬停事件。
 func (e *Element) Hover(ctx context.Context) error {
 	return e.el.Context(ctx).Hover()
 }
 
-// WaitStable 在执行操作前阻塞等待，直到该元素的位置/尺寸不再变化
-// （方案 §10.3，稳定性等待）。
+// WaitStable 等待元素的位置和尺寸保持稳定。
 func (e *Element) WaitStable(ctx context.Context) error {
 	err := e.el.Context(ctx).Timeout(elementStableTimeout).WaitStable(150 * time.Millisecond)
 	if err == nil {

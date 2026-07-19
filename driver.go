@@ -1,7 +1,4 @@
-// Package rod 基于 go-rod 实现浏览器自动化的 Driver 端口（domain/node）
-// （方案 §10）。选用基于 remote-object-id 的 go-rod，而非 chromedp 的
-// DOM-node-id 方案，正是为了规避方案 Key Finding 3 中记录的本地
-// NodeID/DOM.documentUpdated 竞态问题。
+// Package rod implements the browser automation ports with go-rod.
 package rod
 
 import (
@@ -28,7 +25,7 @@ import (
 // go-rod's local locate timeout to the domain's explicit not-found contract.
 var errSelectorNotFound = errors.New("rod: selector matched no element")
 
-// Options 用于配置 New。
+// Options 配置浏览器启动方式和元素定位超时。
 type Options struct {
 	Headless bool
 	// BrowserPath optionally selects a user-installed Chromium/Chrome binary.
@@ -41,8 +38,7 @@ type Options struct {
 
 const navigationTimeout = 30 * time.Second
 
-// Driver 是 node.Driver 的 go-rod 实现。一个 Driver 拥有一个
-// browser + 一个 page。
+// Driver 实现 Core 的浏览器驱动端口，并管理一个浏览器页面。
 type Driver struct {
 	browser *rod.Browser
 	page    *rod.Page
@@ -52,7 +48,7 @@ type Driver struct {
 
 var _ node.Driver = (*Driver)(nil)
 
-// New 启动一个固定版本的 Chromium（方案 §10.4）并打开一个页面。
+// New 启动 Chromium 并打开一个页面。
 func New(opts Options) (*Driver, error) {
 	l := launcher.New().Headless(opts.Headless).Revision(launcher.RevisionDefault)
 	if opts.BrowserPath != "" {
@@ -87,8 +83,7 @@ func New(opts Options) (*Driver, error) {
 	return &Driver{browser: browser, page: page, launch: l, timeout: timeout}, nil
 }
 
-// cleanupFailedLaunch cannot use launcher.Cleanup because go-rod only closes
-// its internal exit channel after a process starts successfully.
+// cleanupFailedLaunch removes launcher resources when the process does not start.
 func cleanupFailedLaunch(l *launcher.Launcher) {
 	if l.PID() != 0 {
 		l.Kill()
@@ -105,13 +100,12 @@ func cleanupLaunchedBrowser(browser *rod.Browser, l *launcher.Launcher) error {
 	return err
 }
 
-// Close 关闭该 page 所属的 browser，并清理 launcher 的临时
-// profile 目录。
+// Close 关闭浏览器并清理启动器创建的临时配置目录。
 func (d *Driver) Close() error {
 	return cleanupLaunchedBrowser(d.browser, d.launch)
 }
 
-// Wait blocks until the controlled page is closed or ctx is cancelled.
+// Wait 等待页面关闭或 ctx 被取消。
 func (d *Driver) Wait(ctx context.Context) error {
 	select {
 	case <-d.page.GetContext().Done():
@@ -121,6 +115,7 @@ func (d *Driver) Wait(ctx context.Context) error {
 	}
 }
 
+// Closed 报告浏览器页面是否已经关闭。
 func (d *Driver) Closed() bool {
 	select {
 	case <-d.page.GetContext().Done():
@@ -130,15 +125,14 @@ func (d *Driver) Closed() bool {
 	}
 }
 
+// Done 返回一个在浏览器页面关闭时结束的通道。
 func (d *Driver) Done() <-chan struct{} { return d.page.GetContext().Done() }
 
-// RawPage exposes the run-scoped CDP page to infrastructure collaborators.
-// It must never cross into application or domain APIs.
+// RawPage 返回当前页面的 go-rod 实例，供基础设施协作者使用。
+// 返回的页面对象不得进入应用层或领域层 API。
 func (d *Driver) RawPage() *rod.Page { return d.page }
 
-// CaptureViewportJPEG captures the browser's current viewport without
-// scrolling, resizing, or changing page state. It is deliberately an
-// infrastructure-only capability rather than part of node.Driver.
+// CaptureViewportJPEG 在不改变页面状态的情况下截取当前视口。
 func (d *Driver) CaptureViewportJPEG(ctx context.Context, quality int) ([]byte, error) {
 	if d == nil || d.page == nil {
 		return nil, errors.New("browser page is unavailable")
@@ -151,7 +145,7 @@ func (d *Driver) CaptureViewportJPEG(ctx context.Context, quality int) ([]byte, 
 	})
 }
 
-// Navigate 加载 url 并等待 DOM 稳定（方案 §10.3）。
+// Navigate 加载 URL 并等待 DOM 稳定。
 func (d *Driver) Navigate(ctx context.Context, url string) error {
 	p := d.page.Context(ctx)
 	if err := p.Navigate(url); err != nil {
@@ -166,6 +160,7 @@ func (d *Driver) Navigate(ctx context.Context, url string) error {
 	return nil
 }
 
+// Press 向当前页面发送受支持的键盘按键。
 func (d *Driver) Press(ctx context.Context, key string) error {
 	switch key {
 	case "Escape", "Esc":
@@ -177,8 +172,7 @@ func (d *Driver) Press(ctx context.Context, key string) error {
 	}
 }
 
-// Open navigates without the execution engine's DOM-stability wait. Interactive
-// sampling must remain usable on pages with continuous animation or mutation.
+// Open 导航到 URL，但不等待 DOM 稳定，适合持续动画或持续变更的页面。
 func (d *Driver) Open(ctx context.Context, url string) error {
 	if err := d.page.Context(ctx).Navigate(url); err != nil {
 		if ctx.Err() != nil {
@@ -189,9 +183,7 @@ func (d *Driver) Open(ctx context.Context, url string) error {
 	return nil
 }
 
-// Locate 按 priority 升序依次尝试 spec.Selectors（方案 §10.2），
-// 只有当所有 selector 都明确找不到元素后才返回 ErrElementNotFound——
-// 这是引擎用来触发自愈的信号。
+// Locate 按优先级升序尝试 selector；仅当所有 selector 都未找到元素时返回 ErrElementNotFound。
 func (d *Driver) Locate(ctx context.Context, spec fingerprint.NodeSpec) (node.Element, error) {
 	sorted := sortedSelectors(spec.Selectors)
 	if len(sorted) == 0 {
@@ -246,8 +238,7 @@ func sortedSelectors(sels []fingerprint.Selector) []fingerprint.Selector {
 	return out
 }
 
-// WaitNetworkIdle 阻塞到页面持续 300ms 没有网络请求；超时由 ctx 控制
-// （domain 的 WaitNode 会带条件超时的 ctx 进来）。
+// WaitNetworkIdle 等待页面连续 300 毫秒没有网络请求。
 func (d *Driver) WaitNetworkIdle(ctx context.Context) error {
 	p := d.page.Context(ctx)
 	wait := p.WaitRequestIdle(300*time.Millisecond, nil, nil, nil)
@@ -264,14 +255,17 @@ func (d *Driver) WaitNetworkIdle(ctx context.Context) error {
 	}
 }
 
+// Expose 将 Go 回调注册为页面可调用的绑定，并返回移除绑定的函数。
 func (d *Driver) Expose(name string, fn func(gson.JSON) (interface{}, error)) (func() error, error) {
 	return d.page.Expose(name, fn)
 }
 
+// EvalOnNewDocument 将脚本注册为每个新文档的初始化脚本。
 func (d *Driver) EvalOnNewDocument(js string) (func() error, error) {
 	return d.page.EvalOnNewDocument(js)
 }
 
+// EvalScript 在当前页面执行 JavaScript，并返回脚本异常或传输错误。
 func (d *Driver) EvalScript(ctx context.Context, js string) error {
 	res, err := proto.RuntimeEvaluate{
 		Expression:                  js,
@@ -288,7 +282,7 @@ func (d *Driver) EvalScript(ctx context.Context, js string) error {
 	return nil
 }
 
-// Snapshot 返回供 Healer 对候选打分所用的 DOMSnapshot。
+// Snapshot 返回供自愈候选节点评分使用的 DOM 快照。
 func (d *Driver) Snapshot(ctx context.Context) (heal.DOMSnapshot, error) {
 	return &Snapshot{page: d.page.Context(ctx)}, nil
 }

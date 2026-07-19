@@ -12,9 +12,7 @@ import (
 	rodadapter "github.com/Capsule7446/healix-rod"
 )
 
-// ControlledBrowser keeps the interactive browser lifetime independent from
-// the capture lifetime. It is used by the desktop sampling workspace, where a
-// user may log in before sampling and pause without losing the browser profile.
+// ControlledBrowser 管理受控浏览器生命周期和页面采样状态。
 type ControlledBrowser struct {
 	driver *rodadapter.Driver
 
@@ -26,6 +24,7 @@ type ControlledBrowser struct {
 	removeScript func() error
 }
 
+// NewControlled 创建受控浏览器。
 func NewControlled(opts Options) (*ControlledBrowser, error) {
 	driver, err := rodadapter.New(rodadapter.Options{
 		Headless: opts.Headless, BrowserPath: opts.BrowserPath,
@@ -36,8 +35,7 @@ func NewControlled(opts Options) (*ControlledBrowser, error) {
 	return &ControlledBrowser{driver: driver}, nil
 }
 
-// Open installs the sampler in a disabled state before navigating. Page
-// interactions therefore remain invisible until BeginCapture is called.
+// Open 打开 startURL，并先以暂停状态安装采样脚本。
 func (b *ControlledBrowser) Open(ctx context.Context, startURL string) error {
 	b.mu.Lock()
 	if b.closed {
@@ -95,6 +93,7 @@ func (b *ControlledBrowser) Open(ctx context.Context, startURL string) error {
 	return nil
 }
 
+// BeginCapture 启用交互采样，并将捕获结果交给 handler。
 func (b *ControlledBrowser) BeginCapture(ctx context.Context, handler sampling.CaptureHandler) error {
 	if handler == nil {
 		return errors.New("sampler: capture handler is required")
@@ -118,6 +117,7 @@ func (b *ControlledBrowser) BeginCapture(ctx context.Context, handler sampling.C
 	return nil
 }
 
+// PauseCapture 暂停交互采样，但保留浏览器和页面。
 func (b *ControlledBrowser) PauseCapture(ctx context.Context) error {
 	b.mu.Lock()
 	if b.closed || !b.opened {
@@ -138,10 +138,7 @@ func (b *ControlledBrowser) PauseCapture(ctx context.Context) error {
 	return nil
 }
 
-// ArmValidationCapture switches the page-side sampler into a one-shot target
-// picker.  The injected script intercepts the complete next left pointer
-// sequence before page handlers run and forwards exactly one `validate`
-// capture through the ordinary binding.
+// ArmValidationCapture 准备捕获下一次验证操作，并通过普通绑定转发一个 validate 事件。
 func (b *ControlledBrowser) ArmValidationCapture(ctx context.Context) error {
 	b.mu.Lock()
 	if b.closed || !b.opened || b.handler == nil {
@@ -158,6 +155,7 @@ func (b *ControlledBrowser) ArmValidationCapture(ctx context.Context) error {
 	return nil
 }
 
+// CancelValidationCapture 取消已准备的下一次验证操作捕获。
 func (b *ControlledBrowser) CancelValidationCapture(ctx context.Context) error {
 	b.mu.Lock()
 	if b.closed || !b.opened {
@@ -174,6 +172,7 @@ func (b *ControlledBrowser) CancelValidationCapture(ctx context.Context) error {
 	return nil
 }
 
+// CurrentURL 返回当前页面 URL。
 func (b *ControlledBrowser) CurrentURL() (string, error) {
 	info, err := b.driver.RawPage().Info()
 	if err != nil {
@@ -182,8 +181,10 @@ func (b *ControlledBrowser) CurrentURL() (string, error) {
 	return info.URL, nil
 }
 
+// Done 返回一个在浏览器关闭时结束的通道。
 func (b *ControlledBrowser) Done() <-chan struct{} { return b.driver.Done() }
 
+// Close 停止采样、移除页面资源并关闭浏览器。
 func (b *ControlledBrowser) Close() error {
 	b.mu.Lock()
 	if b.closed {
