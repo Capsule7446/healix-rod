@@ -1,6 +1,6 @@
 module github.com/Capsule7446/healix-rod
 
-go 1.26.4
+go 1.26.5
 
 require (
 	github.com/Capsule7446/healix-core v0.0.0
