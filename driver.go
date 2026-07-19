@@ -193,10 +193,15 @@ func (d *Driver) Locate(ctx context.Context, spec fingerprint.NodeSpec) (node.El
 		return nil, fmt.Errorf("node %q has no selectors", spec.ID)
 	}
 
-	locateCtx, cancel := context.WithTimeout(ctx, d.timeout)
-	defer cancel()
+	deadline := time.Now().Add(d.timeout)
 	for _, sel := range sorted {
-		el, err := d.locateOne(locateCtx, sel)
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			break
+		}
+		attemptCtx, cancel := context.WithTimeout(ctx, remaining)
+		el, err := d.locateOne(attemptCtx, sel)
+		cancel()
 		if err == nil && el != nil {
 			return &Element{el: el}, nil
 		}
