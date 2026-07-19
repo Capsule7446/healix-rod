@@ -48,6 +48,8 @@ jobs:
         run: go build ./...
 
       - name: Collect coverage
+        env:
+          HEALIX_ROD_NO_SANDBOX: "1"
         run: go test -covermode=atomic -coverprofile=coverage.out ./...
 
       - name: Install govulncheck
