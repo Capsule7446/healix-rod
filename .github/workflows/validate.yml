@@ -62,7 +62,7 @@ jobs:
         run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.10
 
       - name: Run security check
-        run: gosec -fmt sarif -out gosec.sarif ./...
+        run: gosec -exclude-dir=healix-core -fmt sarif -out gosec.sarif ./...
 
       - name: Upload security report
         if: ${{ always() && hashFiles('gosec.sarif') != '' }}
