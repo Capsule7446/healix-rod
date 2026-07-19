@@ -16,14 +16,16 @@ import (
 type ControlledBrowser struct {
 	driver *rodadapter.Driver
 
-	mu           sync.Mutex
-	handler      sampling.CaptureHandler
-	opened       bool
-	opening      bool
-	closed       bool
-	inFlight     sync.WaitGroup
-	stopExpose   func() error
-	removeScript func() error
+	mu             sync.Mutex
+	handler        sampling.CaptureHandler
+	opened         bool
+	opening        bool
+	closed         bool
+	activeCaptures int
+	cleanupStarted bool
+	captureDone    chan struct{}
+	stopExpose     func() error
+	removeScript   func() error
 }
 
 // NewControlled 创建受控浏览器。
@@ -58,9 +60,17 @@ func (b *ControlledBrowser) Open(ctx context.Context, startURL string) error {
 			return nil, errors.New("sampler: capture is paused")
 		}
 		handler := b.handler
-		b.inFlight.Add(1)
+		b.activeCaptures++
 		b.mu.Unlock()
-		defer b.inFlight.Done()
+		defer func() {
+			b.mu.Lock()
+			b.activeCaptures--
+			if b.activeCaptures == 0 && b.captureDone != nil {
+				close(b.captureDone)
+				b.captureDone = nil
+			}
+			b.mu.Unlock()
+		}()
 		capture, err := decodeCapture(payload)
 		if err != nil {
 			return nil, err
@@ -217,9 +227,27 @@ func (b *ControlledBrowser) Close() error {
 	opened := b.opened
 	stopExpose := b.stopExpose
 	removeScript := b.removeScript
+	if b.activeCaptures > 0 {
+		if b.cleanupStarted {
+			b.mu.Unlock()
+			return nil
+		}
+		b.cleanupStarted = true
+		done := make(chan struct{})
+		b.captureDone = done
+		b.mu.Unlock()
+		go func() {
+			<-done
+			_ = b.cleanup(opened, stopExpose, removeScript)
+		}()
+		return nil
+	}
+	b.cleanupStarted = true
 	b.mu.Unlock()
+	return b.cleanup(opened, stopExpose, removeScript)
+}
 
-	b.inFlight.Wait()
+func (b *ControlledBrowser) cleanup(opened bool, stopExpose, removeScript func() error) error {
 	var result error
 	if opened && !b.driver.Closed() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), samplingCloseTimeout)
