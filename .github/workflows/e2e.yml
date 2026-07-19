@@ -17,17 +17,11 @@ jobs:
       - name: Checkout adapter
         uses: actions/checkout@v4
 
-      - name: Check Core dependency token
-        env:
-          CORE_READ_TOKEN: ${{ secrets.CORE_READ_TOKEN }}
-        run: test -n "$CORE_READ_TOKEN"
-
       - name: Checkout Core dependency
         uses: actions/checkout@v4
         with:
           repository: Capsule7446/healix-core
           path: healix-core
-          token: ${{ secrets.CORE_READ_TOKEN }}
 
       - name: Use checked out Core dependency
         run: go mod edit -replace=github.com/Capsule7446/healix-core=./healix-core
