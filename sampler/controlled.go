@@ -24,6 +24,7 @@ type ControlledBrowser struct {
 	activeCaptures int
 	cleanupStarted bool
 	captureDone    chan struct{}
+	closeErr       error
 	stopExpose     func() error
 	removeScript   func() error
 }
@@ -106,7 +107,12 @@ func (b *ControlledBrowser) Open(ctx context.Context, startURL string) error {
 	b.removeScript = removeScript
 	b.mu.Unlock()
 	if closed {
-		return errors.Join(removeScript(), stopExpose(), b.driver.Close())
+		result := errors.Join(removeScript(), stopExpose(), b.driver.Close())
+		b.mu.Lock()
+		b.opening = false
+		b.closeErr = result
+		b.mu.Unlock()
+		return result
 	}
 	if err := b.driver.EvalScript(ctx, combinedScript); err != nil {
 		return errors.Join(fmt.Errorf("sampler: inject controlled capture script: %w", err), b.Close())
@@ -219,8 +225,9 @@ func (b *ControlledBrowser) Done() <-chan struct{} { return b.driver.Done() }
 func (b *ControlledBrowser) Close() error {
 	b.mu.Lock()
 	if b.closed {
+		err := b.closeErr
 		b.mu.Unlock()
-		return nil
+		return err
 	}
 	b.closed = true
 	b.handler = nil
@@ -238,7 +245,10 @@ func (b *ControlledBrowser) Close() error {
 		b.mu.Unlock()
 		go func() {
 			<-done
-			_ = b.cleanup(opened, stopExpose, removeScript)
+			err := b.cleanup(opened, stopExpose, removeScript)
+			b.mu.Lock()
+			b.closeErr = err
+			b.mu.Unlock()
 		}()
 		return nil
 	}
