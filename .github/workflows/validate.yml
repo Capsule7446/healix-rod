@@ -18,8 +18,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Capsule7446/healix-core
-          path: ../healix-core
+          path: healix-core
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Use checked out Core dependency
+        run: go mod edit -replace=github.com/Capsule7446/healix-core=./healix-core
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -60,7 +63,7 @@ jobs:
         run: gosec -fmt sarif -out gosec.sarif ./...
 
       - name: Upload security report
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        if: ${{ always() && hashFiles('gosec.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: gosec.sarif
