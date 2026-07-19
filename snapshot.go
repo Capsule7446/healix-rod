@@ -15,14 +15,22 @@ import (
 // 所需的全部信息，外加一个合成的 CSS path，供 Driver.Locate
 // 重新定位出胜出的候选。
 const candidateJS = `() => {
+  const uniqueIDCache = new WeakMap();
+  const labelCache = new WeakMap();
+  const accessibleNameCache = new WeakMap();
   function uniqueID(el) {
-    if (!el.id) return false;
-    try {
-      const matches = document.querySelectorAll('#' + CSS.escape(el.id));
-      return matches.length === 1 && matches[0] === el;
-    } catch (_) {
-      return false;
+    if (uniqueIDCache.has(el)) return uniqueIDCache.get(el);
+    let result = false;
+    if (el.id) {
+      try {
+        const matches = document.querySelectorAll('#' + CSS.escape(el.id));
+        result = matches.length === 1 && matches[0] === el;
+      } catch (_) {
+        result = false;
+      }
     }
+    uniqueIDCache.set(el, result);
+    return result;
   }
   function cssPath(el) {
     if (uniqueID(el)) return '#' + CSS.escape(el.id);
@@ -54,21 +62,27 @@ const candidateJS = `() => {
     return p;
   }
   function labelText(el) {
+    if (labelCache.has(el)) return labelCache.get(el);
+    let result = '';
     if (el.id) {
       const byFor = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
-      if (byFor) return (byFor.innerText || byFor.textContent || '').trim();
+      if (byFor) result = (byFor.innerText || byFor.textContent || '').trim();
     }
-    const labelledBy = el.getAttribute('aria-labelledby');
-    if (labelledBy) {
-      const text = labelledBy.split(/\s+/).map((id) => {
-        const ref = document.getElementById(id);
-        return ref ? (ref.innerText || ref.textContent || '').trim() : '';
-      }).filter(Boolean).join(' ');
-      if (text) return text;
+    if (!result) {
+      const labelledBy = el.getAttribute('aria-labelledby');
+      if (labelledBy) {
+        result = labelledBy.split(/\s+/).map((id) => {
+          const ref = document.getElementById(id);
+          return ref ? (ref.innerText || ref.textContent || '').trim() : '';
+        }).filter(Boolean).join(' ');
+      }
     }
-    const wrapping = el.closest('label');
-    if (wrapping) return (wrapping.innerText || wrapping.textContent || '').trim();
-    return '';
+    if (!result) {
+      const wrapping = el.closest('label');
+      if (wrapping) result = (wrapping.innerText || wrapping.textContent || '').trim();
+    }
+    labelCache.set(el, result);
+    return result;
   }
   function implicitRole(el) {
     const explicit = el.getAttribute('role');
@@ -93,24 +107,32 @@ const candidateJS = `() => {
     return '';
   }
   function accessibleName(el) {
+    if (accessibleNameCache.has(el)) return accessibleNameCache.get(el);
+    let result = '';
     const labelledBy = el.getAttribute('aria-labelledby');
     if (labelledBy) {
       const text = labelledBy.split(/\s+/).map((id) => {
         const ref = document.getElementById(id);
         return ref ? (ref.innerText || ref.textContent || '').trim() : '';
       }).filter(Boolean).join(' ');
-      if (text) return text;
+      if (text) result = text;
     }
-    const ariaLabel = el.getAttribute('aria-label');
-    if (ariaLabel) return ariaLabel.trim();
-    const label = labelText(el);
-    if (label) return label;
+    if (!result) {
+      const ariaLabel = el.getAttribute('aria-label');
+      if (ariaLabel) result = ariaLabel.trim();
+    }
+    if (!result) {
+      const label = labelText(el);
+      if (label) result = label;
+    }
     const tag = el.tagName.toLowerCase();
-    if (tag === 'img') return (el.getAttribute('alt') || '').trim();
-    if (tag === 'input' && ['button', 'reset', 'submit'].includes((el.type || '').toLowerCase())) {
-      return (el.value || '').trim();
+    if (!result && tag === 'img') result = (el.getAttribute('alt') || '').trim();
+    if (!result && tag === 'input' && ['button', 'reset', 'submit'].includes((el.type || '').toLowerCase())) {
+      result = (el.value || '').trim();
     }
-    return (el.innerText || el.textContent || el.getAttribute('title') || '').trim();
+    if (!result) result = (el.innerText || el.textContent || el.getAttribute('title') || '').trim();
+    accessibleNameCache.set(el, result);
+    return result;
   }
   function formID(el) {
     const form = el.closest('form');
