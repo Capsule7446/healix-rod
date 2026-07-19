@@ -1,0 +1,71 @@
+name: PR Agent
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  pr_agent:
+    if: >
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      contains(fromJson('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
+      (contains(fromJson('["/review","/describe","/improve"]'), github.event.comment.body) ||
+      startsWith(github.event.comment.body, '/ask ')))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check actor permission
+        id: actor_permission
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          permission="$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${GITHUB_ACTOR}/permission" --jq .permission 2>/dev/null || echo none)"
+          case "$permission" in
+            admin|maintain|write) echo "allowed=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "allowed=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Check PR Agent configuration
+        id: pr_agent_config
+        if: ${{ steps.actor_permission.outputs.allowed == 'true' }}
+        env:
+          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_BASE" ] || [ -z "$OPENAI_API_KEY" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "PR Agent secrets are not configured; skipping review."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run PR Agent
+        if: ${{ steps.actor_permission.outputs.allowed == 'true' && steps.pr_agent_config.outputs.configured == 'true' }}
+        uses: The-PR-Agent/pr-agent@b1328dff6c598633d78b69d1035298ca3f8aeffb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI__KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI__API_BASE: ${{ secrets.OPENAI_API_BASE }}
+          CONFIG__RESPONSE_LANGUAGE: zh-CN
+          PR_REVIEWER__EXTRA_INSTRUCTIONS: >-
+            请用中文进行 Go 项目 PR Review。重点检查公开 API 兼容性、错误包装与传播、context 取消、Chromium 和临时目录资源清理、并发竞态、测试覆盖率、依赖边界、GoDoc 和 CI 安全性。发现问题时给出文件、行号、复现条件和修复建议。
+          PR_DESCRIPTION__EXTRA_INSTRUCTIONS: 请用中文总结 PR 变更、风险和测试结果。
+          PR_CODE_SUGGESTIONS__EXTRA_INSTRUCTIONS: 请用中文给出符合 Go 惯用法的代码改进建议。
+          github_action_config.auto_review: "true"
+          github_action_config.auto_describe: "false"
+          github_action_config.auto_improve: "false"
+          github_action_config.pr_actions: '["opened", "reopened", "ready_for_review", "synchronize"]'
+          github_action_config.handle_push_trigger: "true"
+          github_action_config.push_commands: '["/review"]'

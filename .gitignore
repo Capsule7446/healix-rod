@@ -1,0 +1,5 @@
+.idea/
+.devtools/chromium/
+.devtools/bin/
+coverage.out
+gosec.sarif
